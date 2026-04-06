@@ -64,7 +64,7 @@ to estimate light precipitation using CloudSat observations and
 moderate-to-heavy precipitation using Dual-Frequency Precipitation Radar
 observations. The two estimates are combined using a fusion scheme to obtain a
 consistent precipitation estimate across precipitation regimes. Validation
-against in situ measurements from shipborne disdrometers shows a 25% improvement
+against in situ measurements from shipborne disdrometers shows a 25\% improvement
 in the detection skill for high-latitude precipitation and a reduction in the
 underestimation of high-latitude and frozen precipitation by more than 50%
 compared to retrievals constrained only by precipitation radar data. However,
@@ -126,7 +126,7 @@ understanding of the global hydrological cycle.
 
 However, even after three decades of dedicated satellite missions and scientific
 efforts to measure global precipitation, oceanic precipitation at high latitudes still
-remains poorly constrained. To illustrate this, Fig. 1 shows zonal means of
+remains poorly constrained. To illustrate this, Fig. \ref{fig:zonal_means} shows zonal means of
 oceanic precipitation from three principal precipitation datasets: PMW
 precipitation estimates from GPM Microwave Imager (GMI) retrieved using the V07
 of the Goddard Profiling Algorithm (GPROF) retrieval algorithm, the Global
@@ -154,6 +154,11 @@ Cloud Profiling Radar (CPR), which is more sensitive to light snowfall and
 extends observations to higher latitudes. However, such corrections constrain
 long-term means rather than instantaneous retrievals and may therefore
 misrepresent the temporal variability of high-latitude precipitation.
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure01.png}}
+  \caption{Zonal means of oceanic precipitation from GMI, the GPCP merged precipitation dataset, and the ERA5 reanalysis. Panel (a) shows absolute precipitation rates; Panel (b) shows relative deviations from the cross-dataset mean.}\label{fig:zonal_means}
+\end{figure}
 
 Recent neural-network precipitation retrievals have improved performance across
 many regimes and are being adopted operationally. However, machine-learning
@@ -185,7 +190,7 @@ GPROF-NN XPR has been developed as an auxiliary retrieval to recover missing
 oceanic precipitation in DPR-based reference data used by previous versions of
 the GPROF and GPROF-NN retrievals. It is part of the development of GPROF V08 --
 the next operational version of the GPM PMW retrievals -- and aims to address
-the systematic underestimation of high latitude precipitation. The previoous
+the systematic underestimation of high latitude precipitation. The previous
 operational version of GPROF -- GPROF V07 -- used light precipitation estimates
 from the MiRS algorithm to fill in missing precipitation in DPR estimates but
 this was unsuccessful in fully addressing the underestimation. The filling in of
@@ -207,39 +212,25 @@ used to constrain oceanic precipitation.
 
 \section{Methods and Data}
 
-The GPROF-NN XPR retrieval algorith is a machine-learning based precipitation
+The GPROF-NN XPR retrieval algorithm is a machine-learning based precipitation
 retrieval that is trained to simultaneously provide estimates of CPR-based and
-DPR-based precipitation. The two estimates are subsequently fused to provide a
-general precipitation estimate that better represents precipitation across
-different precipitation regimes. Below we describe the retrieval implementation
-together with the data sources used to validate the retrieval itself as well as
-the two radar-based reference datasets.
+DPR-based precipitation rates. The two estimates are subsequently fused to
+provide a general precipitation estimate that better represents the full
+spectrum of precipitation intensities. Below we describe the retrieval
+implementation together with the data sources used to validate the retrieval
+itself as well as the two radar-based reference datasets.
 
 
 \subsection*{The GPROF-NN XPR Retrieval}
 
 The GPROF-NN XPR retrieval is based on the GPROF-NN retrieval framework
 introduced in Pfreundschuh (2022) and subsequently evaluated in Pfreundschuh
-(2024). An updated version of GPROF-NN is currently under development, which
-will become the operational precipitation retrieval of the GPM constellation as
-GPROF V08. It is designed to provide estimates of light
-precipitation missing from DPR-based retrievals and thus construct improved
-training data for the next version of GPROF-NN retrievals.
+(2024). It uses the same neural-network architectures as the updated version of GPROF-NN that is currently under
+development and will become the operational precipitation retrieval of the GPM constellation as
+GPROF V08.
 
-Secondary headings labeled with letters are formatted using the
-$\backslash$subsection$*${\tt\string{\string}} for a single
-subsection within a section or
-or $\backslash$subsection{\tt\string{\string}} 
-for multiple
-subsections within one section.
+\subsubsection*{Neural Network Model}
 
-\subsubsection*{Tertiary headings} 
-Tertiary headings are formatted using the
-$\backslash$subsubsection$*${\tt\string{\string}} for single a subsubsection
-within a subsection or
-$\backslash$subsubsection{\tt\string{\string}} 
-for multiple subsubsections
-within a subsection. 
 
 \paragraph*{Quaternary headings} 
 Quaternary headings are formatted using the
