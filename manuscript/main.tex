@@ -56,7 +56,7 @@ passive-microwave retrievals are commonly trained using these radar observations
 as reference data, this limitation is propagated into passive-microwave
 precipitation products.\\
 %
-This study introduces a novel passive-microwave precipitation retrieval,
+This study introduces a novel passive-microwave oceanic precipitation retrieval,
 GPROF-NN eXtended Precipitation Regime (XPR), that combines reference estimates
 from a cloud radar and a precipitation radar to overcome the sensitivity
 limitations of current spaceborne precipitation radars. The retrieval is trained
@@ -115,18 +115,117 @@ precipitation in future GPM precipitation products.\\
 %
 \section{Introduction}
 
-Precipitation is an important atmospheric process critical for sustaining terrestrial ecosystems and affecting a wide range of societal and economic activities. Measuring the global distribution of precipitation and its variability is an important prerequisite towards understanding – and, ultimately, predicting – the occurrence and intensity of precipitation. Satellite remote sensing is the principal technique for monitoring the global distribution of precipitation and therefore an essential tool for advancing the understanding of the global hydrological cycle.
+Precipitation is an important atmospheric process critical for sustaining
+terrestrial ecosystems and affecting a wide range of societal and economic
+activities. Measuring the global distribution of precipitation and its
+variability is an important prerequisite towards understanding – and,
+ultimately, predicting – the occurrence and intensity of precipitation.
+Satellite remote sensing is the principal technique for monitoring the global
+distribution of precipitation and therefore an essential tool for advancing the
+understanding of the global hydrological cycle.
 
-However, even after three decades of dedicated satellite missions and scientific efforts to measure global precipitation, precipitation at high latitudes still remains poorly constrained.
-To illustrate this, Fig. 1 shows zonal means of oceanic precipitation from three principal precipitation datasets: PMW precipitation estimates from GMI retrieved using the GPROF V07 retrieval algorithm,  the Global Precipitation Climatology Project (GPCP, (Huffman et al. 2023)), and the ERA5 reanalysis (Hersbach et al. 2020). While the datasets are largely consistent across the tropics and mid-latitudes, the zonal means diverge poleward of 40 ° showing deviations of up to 80 \% in the mid and high latitudes.
+However, even after three decades of dedicated satellite missions and scientific
+efforts to measure global precipitation, oceanic precipitation at high latitudes still
+remains poorly constrained. To illustrate this, Fig. 1 shows zonal means of
+oceanic precipitation from three principal precipitation datasets: PMW
+precipitation estimates from GPM Microwave Imager (GMI) retrieved using the V07
+of the Goddard Profiling Algorithm (GPROF) retrieval algorithm, the Global
+Precipitation Climatology Project (GPCP, (Huffman et al. 2023)), and the ERA5
+reanalysis (Hersbach et al. 2020). While the datasets are largely consistent
+across the tropics and mid-latitudes, the zonal means diverge poleward of 40 °
+showing deviations of up to 80 \% in the mid and high latitudes.
 
-\section{Formatting text and sections}
-The text should be divided into sections, each with a separate heading and
-consecutive numbering. Note, however, that single secondary, tertiary, and
-quaternary sections remain unnumbered. Each section heading should be placed
-on a separate line using the appropriate \LaTeX\ commands.
+These large differences are due to a number of challenges. Light and frozen
+precipitation (< 0.1 mm/hr) contribute relatively more to total precipitation
+accumulations at high latitudes than in the tropics and are both harder to
+simulate in models due to weaker linkages to synoptic forcings, and are harder
+to estimate from satellite observations due to their weaker radiometric
+signatures and larger dependence on microphysical variations. The GPM
+Dual-Frequency Precipitation Radar (DPR) has limited sensitivity, causing it to
+miss shallow and frozen precipitation. PMW retrieval algorithms such as GPROF are
+constructed to reproduce DPR-derived reference precipitation conditioned on the
+observed radiances and consequently inherit the limitations of the radar
+reference.
 
-\subsection*{Secondary headings} 
+Merged products such as IMERG and GPCP partially compensate for this deficiency
+using climatological adjustments. GPCP, for example, rescales microwave
+retrievals using precipitation climatologies derived in part from the CloudSat
+Cloud Profiling Radar (CPR), which is more sensitive to light snowfall and
+extends observations to higher latitudes. However, such corrections constrain
+long-term means rather than instantaneous retrievals and may therefore
+misrepresent the temporal variability of high-latitude precipitation.
+
+Recent neural-network precipitation retrievals have improved performance across
+many regimes and are being adopted operationally. However, machine-learning
+retrievals approximate the conditional expectation defined by their training
+data and thus reproduce biases present in the reference observations. Training
+solely on DPR-based precipitation therefore propagates the radar’s limited
+sensitivity to light and frozen precipitation into the learned retrieval,
+regardless of retrieval technique used.
+
+Here we aim to overcome the limitations of current CPR- and DPR-based
+precipitation estimates by using passive microwave (PMW) observations to bridge
+the sensitivity gap between the CPR and DPR and thus achieve more complete
+representation of precipitation across regimes. Specifically, we propose
+GPROF-NN eXtended Precipitation Regime (XPR), a GMI-based retrieval that jointly
+predicts precipitation estimates based on CPR- and DPR-based reference
+precipitation rates. Since the CPR operates at a higher frequency, it is more
+sensitive to small and frozen hydrometeors and can thus be expected to provide a
+better representation of light and frozen precipitation. DPR, on the other hand,
+misses light and frozen precipitation but provides reliable estimates of
+moderate and heavy precipitation. The GPROF-NN XPR retrieval is trained to map
+GMI PMW observations to both a light precipitation estimate based on CPR
+reference data and moderate to heavy precipitation estimate based on DPR
+reference data. As we will show here, an improved representation of
+precipitation across regimes can be obtained by using the CPR-based
+precipitation estimates to fill in missing light precipitation in the DPR-based
+Estimates.
+
+GPROF-NN XPR has been developed as an auxiliary retrieval to recover missing
+oceanic precipitation in DPR-based reference data used by previous versions of
+the GPROF and GPROF-NN retrievals. It is part of the development of GPROF V08 --
+the next operational version of the GPM PMW retrievals -- and aims to address
+the systematic underestimation of high latitude precipitation. The previoous
+operational version of GPROF -- GPROF V07 -- used light precipitation estimates
+from the MiRS algorithm to fill in missing precipitation in DPR estimates but
+this was unsuccessful in fully addressing the underestimation. The filling in of
+missing oceanic precipitation complements several other interventions addressed
+to fix shortcomings in the DPR data used as a priori database and training
+dataset such as the use of ground-based radar estimates over snow-covered
+surface and the use of ERA5 precipitation over sea ice.
+
+This manuscript describes the GPROF-NN XPR retrieval and validates its using
+in-situ measurements from shipborne hydrometeors demonstrating its ability to
+improve the detection of light and frozen precipitation and the reduction of
+climatological biases. Additionally, we provide a validation of the CPR- and
+DPR-based reference estimates against independent measurements from ground-based
+precipitation radars. While the proposed retrieval constitutes a step forward
+towards improving the representation of precipitation at high latitudes, it also
+highlights important inconsistencies in the precipitation products currently
+used to constrain oceanic precipitation.
+
+
+\section{Methods and Data}
+
+The GPROF-NN XPR retrieval algorith is a machine-learning based precipitation
+retrieval that is trained to simultaneously provide estimates of CPR-based and
+DPR-based precipitation. The two estimates are subsequently fused to provide a
+general precipitation estimate that better represents precipitation across
+different precipitation regimes. Below we describe the retrieval implementation
+together with the data sources used to validate the retrieval itself as well as
+the two radar-based reference datasets.
+
+
+\subsection*{The GPROF-NN XPR Retrieval}
+
+The GPROF-NN XPR retrieval is based on the GPROF-NN retrieval framework
+introduced in Pfreundschuh (2022) and subsequently evaluated in Pfreundschuh
+(2024). An updated version of GPROF-NN is currently under development, which
+will become the operational precipitation retrieval of the GPM constellation as
+GPROF V08. It is designed to provide estimates of light
+precipitation missing from DPR-based retrievals and thus construct improved
+training data for the next version of GPROF-NN retrievals.
+
 Secondary headings labeled with letters are formatted using the
 $\backslash$subsection$*${\tt\string{\string}} for a single
 subsection within a section or
