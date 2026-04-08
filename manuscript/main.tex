@@ -23,6 +23,8 @@
 
 \title{Bridging the Sensitivity Gap in Precipitation Estimates from Spaceborne Radars using Passive Microwave Observations}
 
+\usepackage{booktabs}
+
 %% Enter authors' names and affiliations as you see in the examples below.
 %
 %% Use \correspondingauthor{} and \thanks{} (\thanks command to be used for affiliations footnotes, 
@@ -231,16 +233,657 @@ GPROF V08.
 
 \subsubsection*{Neural Network Model}
 
+The GPROF-NN XPR retrieval employs a U-Net–type encoder–decoder architecture
+composed of EfficientNet-V2–style inverted bottleneck convolutional blocks (Tan
+& Le, 2021). Following the normalization and activation design adopted in
+ConvNeXt (Liu et al., 2022), each convolutional block uses Layer Normalization
+(Ba et al., 2016) and GELU activation functions (Hendrycks & Gimpel, 2016). The
+network input consists of GMI brightness temperatures together with the
+corresponding earth-incidence angles (EIA) for all channels and a set of
+ancillary variables. These ancillary data describe both surface conditions (land
+fraction, elevation, mountain classification, leaf-area index, ice fraction, and
+snow depth) and the meteorological environment (2-m temperature, 10-m wind
+speed, orographic wind, and total column water vapor).
 
-\paragraph*{Quaternary headings} 
-Quaternary headings are formatted using the
-$\backslash$paragraph$*${\tt\string{\string}} for a single paragraph within
-a subsubsection or
-$\backslash$paragraph{\tt\string{\string}} 
-for multiple paragraphs
-within a subsection.
+The model produces two precipitation estimates: one trained on CPR-based
+reference precipitation and one trained on DPR-based reference precipitation.
+Both estimates are derived from a shared latent representation using separate
+multilayer perceptron output heads. Each head predicts 32 quantiles of the
+conditional precipitation distribution, which are learned using quantile
+regression (Pfreundschuh, 2018). The expectation is that the CPR-based reference
+data will miss heavy rain where CPR is attenuated while the DPR-based reference
+will miss light precipitation below the detection threshold of those radars.
 
-\section{Citations}
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure02.png}}
+ \caption{
+   Illustration of the U-Net neural network used by GPROF-NN XPR. The network
+   employs MobileNet convolutional blocks (MBConv) within an encoder–decoder
+   architecture. Input features consist of image patches of GMI brightness
+   temperatures, corresponding earth-incidence angles (EIA), and ancillary
+   variables. These inputs are mapped to a shared latent representation from which
+   two precipitation estimates are derived through separate output heads: a
+   CPR-based light precipitation estimate and a DPR-constrained
+   moderate-to-heavy precipitation estimate.
+ }\label{fig:neural_network}
+\end{figure}
+
+\subsubsection*{Training Data and Training}
+
+The training dataset for the GPROF-NN XPR retrieval is constructed from two
+independent sets of collocations between GMI observations and reference
+precipitation estimates from CloudSat and DPR.
+
+For the GMI–CloudSat dataset, precipitation estimates are derived by combining
+information from the 2C-Precip-Column, 2C-Rain-Profile, and 2C-Snow-Profile
+products. Precipitation rates are assigned according to the precipitation
+classification in 2C-Precip-Column: pixels flagged as non-precipitating are
+assigned zero precipitation; pixels classified as rain are assigned the rate
+from 2C-Rain-Profile; and pixels classified as snow are assigned the rate from
+2C-SnowProfile. Pixels that do not meet any of these conditions or are assigned
+a retrieval confidence less than three are treated as missing and excluded from
+training. The dataset includes all collocations from 2014–2017 with a maximum
+temporal separation of 15 min between the GMI and CloudSat observations.
+Collocations from January–October 2018 are used for validation, and those from
+October 2018–October 2019 are reserved for testing.
+
+For the GMI–DPR dataset, precipitation rates are taken from the GPM 2B-CMB
+combined radar–radiometer product. Because GMI and DPR observe from the same
+platform, these collocations are substantially more numerous than the
+GMI–CloudSat matchups. During training, the GMI–CloudSat samples are therefore
+oversampled such that, on average, every second training sample originates from
+the GMI–CloudSat dataset, ensuring comparable learning weight for both reference
+regimes. The training is performed across 120 epochs using a cosine-annealing
+learning-rate schedule with an initial learning rate of 0.0005 and warm restarts
+after 20 and 60 epochs.
+
+\subsubsection*{Fused Precipitation Estimates}
+
+The GPROF-NN XPR retrieval produces, for each GMI pixel, a CPR-based and a
+DPR-based precipitation estimate. To provide a single precipitation estimate
+that properly describes precipitation across precipitation regimes, the two
+estimates must be combined. The fused estimate relies on the CPR-based estimate
+when the DPR-based retrieval indicates no precipitation (reflectivities below
+the DPR threshold) and transitions to the DPR-based estimate as intensity
+increases (reflectivities likely attenuated in CPR). A simple linear transition,
+however, was found to introduce a notable bump in the distribution of the fused
+precipitation rates. Instead, a zero-centered Gaussian weighting function was
+applied to obtain a smooth precipitation-rate distribution. The Gaussian has a
+full width at half maximum of 0.45 $mm h^{-1}$, with the resulting weighting
+function as well as the distribution of test-data precipitation rates shown in
+Fig.~\ref{fig:fused_distributions}.
+
+The distribution of the fused precipitation estimates follows that of the
+CPR-based estimates at low precipitation rates and transitions follow the
+distribution of the DPR-based precipitation rates for moderate to high
+precipitation. The distribution of the GPROF-NN CPR precipitation estimates
+exhibits several irregularities and is less smooth than that of the GPROF-NN DPR
+estimates. We suspect that this may be related to the bimodal distribution of
+the 2C-Rain-Profile estimates that was noted already in Lebsock (2011). While
+the bulges in the PDF of GPROF-NN CPR precipitation estimates do not match the
+exact peaks of the distribution in Fig. 7 in Lebsock (2011), they may be shifted
+in the retrieved distributions due to the increased resolution of the GMI-based
+GPROF-NN retrievals.
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure03.pdf}}
+ \caption{
+Scaling factors used to fuse CPR- and DPR-based precipitation estimates (a) and
+resulting precipitation rate distributions (b).
+ }\label{fig:fused_distributions}
+\end{figure}
+
+\subsection*{Validation Data}
+
+We validate both the GPROF-NN XPR retrieval and the underlying CPR- and
+DPR-based precipitation estimates using independent observations. The GMI-based
+GPROF-NN XPR estimates are validated against in situ measurements from shipborne
+disdrometers, which provide the most direct reference data available for oceanic
+precipitation. Owing to the much narrower swaths of the DPR and CPR, there are
+not enough overpasses to meaningfully evaluate the radar-based reference
+estimates with the shipborne measurements. Instead, their consistency is
+assessed using overpasses along the U.S. East Coast, where the satellite
+estimates are compared with coincident observations from ground-based weather
+radars.
+
+\subsubsection*{OceanRAIN Ship-Based Distrometer Measurements}
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure04.pdf}}
+ \caption{
+OceanRAIN ship tracks and corresponding GMI overpasses. Colored lines indicate
+the trajectories of OceanRAIN vessels during the GMI observation period, and
+black dots denote the collocated satellite overpasses used for validation of the
+GPROF-NN XPR retrieval.
+ }\label{fig:ocean_rain_collocs}
+\end{figure}
+
+The OceanRAIN dataset provides shipborne disdrometer measurements of
+precipitation rates over the ocean. For validation of the GPROF-NN XPR
+retrieval, we identify GMI overpasses of the ship locations from March 2014, the
+start of GMI observations, through September 2018, prior to the period used for
+GPM-DPR training collocations. Because this interval overlaps with the
+GMI–CloudSat training dataset, any coincident matchups are excluded from the
+evaluation.
+
+Figure~\ref{fig:ocean_rain_collocs} shows the ship tracks associated with the OceanRAIN campaigns together
+with the corresponding GMI overpasses. To account for the spatial scale mismatch
+between satellite footprints and point measurements, the satellite estimates are
+compared with 30-min rolling averages of the disdrometer precipitation rates.
+The matched retrieved precipitation is computed by calculating the pixel closest to
+the ship position for each minute in the averaging window and calculating the corresponding
+average.
+
+To eliminate the impact of errors in the validation data, we calculate a relative error using
+
+\begin{align}
+  \text{err} = \frac{|p_\text{retrieved} - p_\text{reference}|}{max(0.5, 0.5 \cdot |p_\text{retrieved} + p_\text{reference}|)}
+\end{align}
+
+The error is calculated for the GPROF-NN DPR retrieval as well as the
+corresponding GPROF V07 and ERA5 precipitation estimates. Samples where the
+minimum relative error across these three datasets exceeds 1.8 are discarded.
+The quality control removes 26 samples from the 3436 collocations with valid
+precipitation estimates. This removes both precipitation events missed by the
+distrometer as well as cases where the distrometer indicates very high
+precipitation rates not seen in the satellite or ERA5 data. However, the
+exclusion of these events does not impact the qualitative results of the
+validation significantly.
+
+
+\subsubsection*{Ground-Based Precipitation Radar Estimates}
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure05.png}}
+ \caption{
+Summary statistics the validation data derived from NOAA’s Multi-Radar
+Multi-Sensor data. Panel (a) shows the radar-quality index quantifying the
+quality of the radar measurements. Panel (b) and (c ) show the mean
+precipitation and precipitation occurrence, respectively.
+ }\label{fig:radar_overpasses}
+\end{figure}
+
+To provide additional context for the evaluation of the GPROF-NN XPR retrieval,
+we assess the CPR- and DPR-constrained reference precipitation estimates using
+independent observations from NOAA’s Multi-Radar Multi-Sensor (MRMS) product
+along the U.S. East Coast. For CloudSat, all available overpasses from June 2015
+through the end of the mission are included. Owing to the wider swath of the
+DPR, overpasses from the year 2022 alone provide sufficient sampling for a
+robust comparison.
+
+Because this study focuses on oceanic precipitation, only satellite pixels
+located over the ocean are retained. Since the chance for beam overshoot
+increases with distance from the shore, only MRMS pixels with a radar quality
+index (RQI) exceeding 0.9 are retained, limiting the distance to the closest
+radar to about 100 km. As RQI fields are unavailable for some earlier MRMS
+periods, the mean RQI field from 2022 is used to screen the matched
+observations. Following Pfreundschuh (2026), the MRMS precipitation fields are
+aggregated to a $0.36^\circ \times 0.36^\circ$ grid and collocated with the CloudSat and
+DPR estimates using nearest-neighbor interpolation. Panel (a) of Fig. 5 presents
+the mean radar quality index (RQI) used to filter valid match-ups. Even with a
+minimum RQI threshold of 0.9, the NEXRAD network provides coverage across most
+of the U.S. East Coast. Panels (b) and (c) display the total number of valid
+precipitation retrievals extracted within the validation domain before the RQI
+mask is applied. Valid CloudSat retrievals are largely limited to ascending
+overpasses due to its restriction to daytime-only operation during the
+validation period. A smaller number of descending overpasses are available over
+the northern portion of the domain during summer. In contrast, the substantially
+wider swath of the DPR results in far more frequent observations that are
+distributed more uniformly across the domain.
+
+
+\section{Results}
+
+Below we present the three principal results from this work: Firstly, we assess
+the accuracy of the GPROF-NN XPR retrieval by comparing it to GPM CMB and
+CloudSat estimates from independent testing periods and a case study from the
+validation period. Following this, we validate the fused GPROF-NN XPR retrieval
+as well as CPR- and DPR-based precipitation estimates against independent
+in-situ precipitation estimates. Finally, we compare global retrieval statistics
+to existing datasets to assess the impact of the expanded reference data on the
+GPROF-NN XPR retrievals.
+
+\subsection*{Retrieval Accuracy}
+
+Figure~\ref{fig:test_results} shows scatter plots of reference and retrieved
+precipitation rates for the CPR- and DPR-based outputs of the GPROF-NN XPR
+retrieval. The retrieval reproduces the DPR-based estimates well, achieving low
+bias and mean-squared error and high linear correlation. For the CPR-based
+estimates, on the other hand, the accuracy is substantially lower: MSE and
+correlation coefficient indicate lower accuracy that is also reflected in the
+increased spread of the retrieved values. In part, this can be explained by the
+higher resolution of the CPR-based precipitation estimates. Both training and
+testing data uses CPR estimates at the native resolution (1.6 km), whereas the
+DPR-based estimates are downsampled to the GMI resolution, which is how they are
+traditionally treated in the GPROF framework. The different approach for the
+CPR-based estimates was chosen due to the difficulties of assigning a unique
+resolution to the GMI observations and downsampling the one-dimensional CPR data
+to the two-dimensional GMI footprints.
+
+The CPR-based precipitation estimates show fair agreement with the reference
+values from 0.1 to 3-4 mm/h but struggle to reproduce precipitation estimates
+exceeding 3-4 mm/h. However, since CloudSat estimates have to be considered very
+uncertain in this range, it is possible that this is – at least in part – due to
+errors in the CPR-based reference data. Additionally, there is a notable bias in
+the CPR-based precipitation estimates of about 13\% which is caused by the
+underestimation of the higher rain rates. Given that precipitation rates
+exceeding 3-4 mm/h account for more than 10 \% of the total precipitation in the
+test data, the bias may be caused by statistical fluctuations and the smaller
+number of testing samples compared to the DPR-based estimates. Furthermore,
+since CloudSat left the A-train in 2018, the precipitation estimates from the
+test data were derived in a different orbital configuration, which can further
+affect bulk precipitation statistics and thus produce biases in the test
+results.
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure06.pdf}}
+ \caption{
+   Scatter plots of reference and retrieved precipitation for the (a) CPR-based
+   and (b) the DPR-based precipitation estimates.
+ }\label{fig:test_results}
+\end{figure}
+
+
+\subsection*{Case Study}
+
+Figure~\ref{fig:case_study} illustrates an example of the DPR- and CPR-based precipitation estimates together with the resulting fused estimate. The case corresponds to a GMI overpass of a Southern Hemisphere mid-latitude cyclone in June 2018. A comparison of the CPR-based, DPR-based, and fused XPR precipitation fields highlights substantial structural differences among the three products. Although the CPR- and DPR-based estimates are generated using the same retrieval framework, they exhibit marked discrepancies. The CPR-based retrieval produces higher precipitation intensities and a broader spatial extent of the cyclone’s precipitation field. The fused XPR product moderates the elevated precipitation rates evident in the CPR-based retrieval while largely preserving its enhanced spatial coverage.
+Comparison with the reference data along the CloudSat swath indicates that the PMW retrieval captures the main precipitation features but does not reproduce the small-scale variability present in the radar-based reference estimates. This discrepancy is expected because PMW observations have coarser spatial resolution and sampling than the radar measurements. Comparison with the CPR and DPR radar reflectivity fields further shows that the GPROF-NN XPR retrieval successfully detects the shallow precipitation occurring between 200 and 250 km along the CloudSat track. Additional regions appear around 50 km and 750 km along the swath where the PMW retrieval indicates precipitation while the radar estimates suggest little or no precipitation. However, in most of these areas the CPR radar still detects reflectivities extending down to the surface, suggesting that precipitation likely reaches the surface but may be overestimated by the PMW retrieval.
+
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure07.pdf}}
+ \caption{
+   Coincident observations of a mid-latitude cyclone by the GPM and CloudSat
+   satellites. The first row of panels displays GMI-based PMW retrievals trained on
+   DPM DPR precipitation (a), on CloudSat CPR precipitation (b), and the fused
+   precipitation field combining the DPR- and CPR-based estimates (c ). Panels (d),
+   (e), and (f) show the retrieved precipitation and the corresponding CloudSat and
+   GPM radar reflectivities along the CloudSat swath.
+ }\label{fig:case_study}
+\end{figure}
+
+\section{Validation}
+
+The results presented above demonstrate that the GPROF-NN XPR retrieval is able
+to reproduce both CPR- and DPR-based precipitation estimates accurately
+considering the differences in resolution and information content of the PMW
+observations as well as the sensitivity ranges of the reference datasets.
+However, it remains essential to evaluate the algorithm against independent
+precipitation datasets. Such validation ensures that the improved agreement with
+the training and reference products corresponds to a genuine enhancement in
+light precipitation estimation skill that can be verified independently.
+
+\subsection{OceanRAIN}
+
+The GPROF-NN XPR precipitation estimates are evaluated using 3,589 OceanRAIN
+overpasses that passed quality control and yielded valid precipitation estimates
+from GPROF V07, ERA5, and GPROF-NN XPR. To provide a more granular assessment,
+we stratify the analysis into three subsets: (1) all overpasses, (2)
+high-latitude cases poleward of 45°, and (3) scenes with a high likelihood of
+mixed or frozen precipitation. The latter classification uses the
+parameterization of Sims (2015) with ERA5-derived wet-bulb temperatures.
+Overpasses with a conditional probability of solid precipitation exceeding 50\%
+are categorized as likely mixed or frozen precipitation events.
+
+\subsubsection*{Precipitation Detection}
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure08.pdf}}
+ \caption{
+    Precipitation-detection skill evaluated against ship-borne distrometer
+    measurements. Each panel shows precision–recall curves for the GPROF-NN XPR
+    retrieval outputs based on CPR estimates (GPROF-NN CPR), the DPR-based
+    precipitation estimates (GPROF-NN DPR), the fused estimates (GPROF-NN XPR) and
+    the GPROF V07 and ERA5 baselines. c Panels (a) – (c ) show precipitation
+    estimates for all overpasses, overpasses for latitudes poleward of 45°, and for
+    mixed and frozen precipitation, respectively.
+ }\label{fig:ocean_rain_detection}
+\end{figure}
+
+We first assess the detection capability of the three GPROF-NN retrievals as
+well as GPROF V07 and ERA5 baselines using precision-recall curves. The
+precision recall curves display the trade off between precision, i.e., the
+probability of a detection being correct, and the recall, i.e., the fraction of
+total precipitation events detected, as the probability threshold used to decide
+whether a pixel raining or not is varied. The more skillful the detection, the
+closer the curve gets to a precision and recall value of one. All GPROF
+retrievals provide a probability of precipitation representing the estimated
+probability of the corresponding pixel containing precipitation. Since ERA5
+doesn’t provide a dedicated probability field for precipitation occurrence, we
+use the precipitation rate as detection criterion. An overpass is defined to be
+precipitating when the half-hour average distrometer precipitation exceeds 0.01
+mm/h.
+
+Figure~\ref{fig:ocean_rain_detection} displays the precipitation detection
+accuracy for all overpasses, overpasses at high latitudes, and mixed and frozen
+precipitation. Considering all overpasses, the CloudSat-based light
+precipitation and the fused GPROF-NN XPR results yield the highest detection
+accuracy. This is consistent with the CloudSat-based precipitation estimates
+providing higher sensitivity to light precipitation that is missed by the GPM
+DPR reference data. The retrieval based solely on GPM DPR data has slightly
+lower detection skill but remains clearly more sensitive than the GPROF V7 and
+ERA5 baselines.
+
+Somewhat surprisingly, the detection accuracy of the DPR-based estimates exceeds
+that of the CPR-based estimates at mid and high latitudes. This seems to
+indicate that the CPR-based GPROF-NN estimates miss certain precipitation events
+that are detected by the DPR-based estimates but it is not immediately clear for
+which precipitation processes this would occur. The GPROF-NN XPR achieves the
+highest precipitation detection skill exceeding that of both the CPR- and the
+DPR-based retrievals.
+
+Although the results for mixed and frozen precipitation are overall noisier, the
+CPR-based and fused precipitation estimates clearly achieve the best detection
+accuracy. The DPR-based retrieval performs worse and is closely followed by
+ERA5. The GPROF V7 retrieval performs substantially worse with the best
+precision and recall values being about half of the GPROF-NN XPR retrieval.
+
+Table~\ref{tab:detection_metrics} evaluates the detection skill of all
+retrievals that provide a probability of precipitation using a probability
+threshold of 0.5. This evaluation confirms that the GPROF-NN XPR retrieval
+yields the best detection skill across all precipitation regimes. In particular,
+the GPROF-NN XPR retrieval improves the detection skill compared to GPROF-NN DPR
+by 48 \%, 26 \%, and 42 \% for all overpasses, mid and high latitudes
+overpasses, and frozen precipitation, respectively.
+
+
+\begin{table}[t]
+\centering
+\caption{Precipitation detection metrics (POD, FAR, CSI) for different retrieval methods evaluated against shipborne distrometer measurements across precipitation regimes.}
+\label{tab:detection_metrics}
+\begin{tabular}{lccccccccc}
+\toprule
+& \multicolumn{3}{c}{All Overpasses} 
+& \multicolumn{3}{c}{Mid and High Latitudes} 
+& \multicolumn{3}{c}{Frozen Precipitation} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+Method 
+& POD & FAR & CSI 
+& POD & FAR & CSI 
+& POD & FAR & CSI \\
+\midrule
+GPROF V07    & 0.37 & 0.31 & 0.32 & 0.29 & 0.28 & 0.26 & 0.11 & 0.25 & 0.10 \\
+GPROF-NN DPR & 0.85 & 0.65 & 0.33 & 0.85 & 0.56 & 0.41 & 0.90 & 0.63 & 0.36 \\
+GPROF-NN CPR & 0.44 & 0.23 & 0.39 & 0.45 & 0.23 & 0.40 & 0.66 & 0.35 & 0.49 \\
+GPROF-NN XPR & 0.67 & 0.35 & 0.49 & 0.65 & 0.28 & 0.52 & 0.71 & 0.36 & 0.51 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection*{Precipitation Estimation}
+
+Figure~\ref{fig:ocean_rain_scatter} assesses the quantitative precipitation
+estimates of the GPROF-NN retrievals with respect to the OceanRAIN reference.
+The GPROF-NN DPR retrieval achieves higher correlation with the OceanRAIN
+measurements than the CPR-based estimates. The CPR-based estimates exhibit
+higher spread at both low- and high-precipitation rates. To assess the impact of
+the precipitation-rate fusion, panel (c) displays the relative change in the
+symmetric mean percentage error (SMAPE) resulting from the combining of the DPR-
+and CPR-based estimates compared to the DPR baseline. While the merging
+decreases the SMAPE for a significant number of samples close to the diagonal,
+the are a notable amount of samples for which the SMAPE is increased. Most of
+these correspond to the merging leading to an overestimation of the
+precipitation. Since the coloring indicates the increase in the relative error,
+the largest increases in error occur at small reference precipitation rates as
+the relative error is more sensitive in these regimes. For red samples below the
+diagonal, the merging with the CPR estimates erroneously reduces the final
+precipitation rate.
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure09.pdf}}
+ \caption{
+ OceanRain measurements and matches GPROF-NN precipitation retrievals. Panels
+ (a) – (c) display scatter plots of OceanRAIN reference precipitation and
+ corresponding precipitation retrieved from the GPROF-NN DPR, GPROF-NN CPR, and
+ GPROF-NN XPR retrievals. Shading in panel (c) indicates the change in the
+ Symmetric Mean Percentage Error resulting from the merging of the DPR- and CPR-
+ based estimates relative to the GPROF-NN DPR baseline.
+ }\label{fig:ocean_rain_scatter}
+\end{figure}
+
+A statistical evaluation of the OceanRAIN overpasses is presented in Fig.~\ref{fig:ocean_rain_stats}.
+Evaluated over all overpasses, both the DPR- and CPR-based estimates are biased
+low. The bias of the DPR-based estimates is around 10 \%, while the DPR-based
+estimates are biased low by 7 \%. Fusing the two estimates leads to a reduction
+in bias to a positive bias of about 1 \%. At mid- and high latitudes, the low
+bias of the DPR estimates is enhanced while the CPR estimates are biased high
+with 16 \%. The fused precipitation estimates are biased low by about 7 \%. For
+frozen precipitation, the bias in the DPR-based estimates increases to 51 \%
+while the CPR-based estimates are low by 20 \%. The bias in the fused GPROF-NN
+XPR precipitation estimates is -20 \%, similar to that of the CPR-based
+estimates. The fusion of the DPR- and CPR- based estimates thus helps to reduce
+systematic underestimation of the DPR-based retrieval. Furthermore, the biases
+are smaller than for the GPROF V7 baseline as well as the ERA5 baseline except
+for frozen precipitation.
+
+In terms of instantaneous retrieval error, the CPR-based estimates have higher
+errors than the DPR-based estimates, particularly at mid to high latitudes. The
+fused estimates dampen these errors to some extent but remain higher or at the
+level of the DPR-based estimates. The GPROF-NN XPR retrieval generally achieves
+lower mean absolute and mean squared error than the ERA5 baseline as well as
+higher correlation. The GPROF V7 baseline has smaller mean squared error and
+higher correlation coefficient for all overpasses. However, when comparing the
+estimates to the 1028 OceanRAIN overpasses with valid 2BCMB reference
+precipitation estimates, the GPROF-NN DPR estimates achieve a MSE of 0.26 (mm
+h$^{-1}$)$^2$ and a linear correlation coefficient of 0.84 compared to 0.32 (mm
+h$^{-1}$)$^2$ and a linear correlation of 0.8 for the GPROF V7 baseline. This
+indicates that these small accuracy differences are likely due to statistical
+noise in the validation data.
+
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure10.pdf}}
+ \caption{
+Statistical evaluation of the GPROF-NN and baseline datasets against shipborne
+in-situ measurements from the OceanRAIN dataset. Panels (a) – (d) display bias,
+mean absolute error, mean squared error, and linear correlation coefficient for
+GMI overpasses over the OceanRAIN vessels. Results are reported independently
+for all overpasses (All), overpasses poleward of 45 deg (High Lat) and
+overpasses with an estimated fraction of frozen precipitation exceeding 50
+\% (Frozen).
+ }\label{fig:ocean_rain_stats}
+\end{figure}
+
+\subsection*{Validation of CPR- and DPR-based Precipitation Estimates}
+
+The validation against OceanRAIN shipborne distrometer measurements has shown
+that the fusion of CPR- and DPR-based precipitation estimates improves the
+precipitation detection skill and reduces systematic underestimation but
+increases the random errors in the precipitation estimates. Assessment of the
+CPR- and DPR-based estimates showed that these higher errors originate from the
+CPR-based estimates, which exhibit significantly larger random errors than the
+DPR-based estimates. Below we therefore examine CPR- and DPR-based precipitation
+errors against independent estimates from ground-based radars.
+
+Figure~\ref{fig:mrms_scatter} displays scatter plots of the CPR- and DPR-based precipitation
+estimates compared to ground-based radar measurements. The CPR-based
+precipitation estimates exhibit very high scatter compared to the MRMS-based
+measurements particularly for MRMS precipitation rates up to 1 mm/h. This is
+surprising given that the CloudSat estimates are expected to be more reliable at
+low precipitation rates, where the radar observations are less affected by
+attenuation. Nonetheless, the estimates achieve a correlation of 0.4 likely due
+to the better agreement for MRMS precipitation rates exceeding 1 mm/h. The
+DPR-based estimates show better agreement with the MRMS estimates. The DPR based
+estimates strongly overestimate any MRMS estimates below 0.5 mm/h, which is a
+result of the limited sensitivity of the DPR. Starting at 0.5 mm/h, however, the
+DPR-based estimates show very good agreement with the MRMS-based estimates up to
+about 10 mm/h, after which they start to exhibit a tendency towards
+under-estimation.
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure11.pdf}}
+ \caption{
+Scatter plots of precipitation estimates from the (a) CPR- and (b) DPR-based
+reference precipitation estimates compared to independent estimates from
+ground-based radar.
+ }\label{fig:mrms_scatter}
+\end{figure}
+
+Figure~\ref{fig:mrms_case_study} shows one of the CPR overpasses from the
+validation dataset illustrating the failure modes visible in the scatter plots.
+While the MRMS precipitation measurements indicate spatially homogeneous with
+precipitation rates around 1 mm h$^{-1}$ throughout most of the scene, the
+CPR-based precipitation oscillate between 0.01 and 10 mm h$^{-1}$. The principal
+change in CPR radar reflectivities during the transition from 10 mm h$^{-1}$ to
+0.01 mm h$^{-1}$ is a strong increase in the surface backscatter while the
+above-surface reflectivities remain relatively similar. While limited, this
+evidence suggest that the errors in the CPR-based precipitation estimates may be
+related to the handling of the surface backscatter rather than inherent
+limitations of the radar observations.
+
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure12.pdf}}
+ \caption{
+   Comparison of collocated CPR and MRMS precipitation estimates. Panel (a)
+   displays the MRMS precipitation field and the ground track of the CPR
+   observations. Panels (b) and (c) display the MRMS and CPR precipiation rates
+   and the CPR radar reflectivity along the track, respectively.
+ }\label{fig:mrms_case_study}
+\end{figure}
+
+The comparison against the independent precipitation estimates from MRMS
+indicates that the CPR-based precipitation estimates do not yield an accurate
+quantitative estimate of light precipitation. In particular, the retrieval seems
+to exhibit a tendency to either strongly underestimate or strongly overestimate
+the MRMS precipitation within the range of 0.1 to 1 mm/h. As shown in
+Fig.~\ref{fig:cpr_cmb_scatter}, this behavior is also observed when the CPR
+estimates are directly compared to the DPR-based estimates. Although one would
+expect the CPR and DPR estimates to agree across precipitation estimates from
+0.5 to 1 mm/h, these results confirm that there is no consistency between the
+precipitation estimates within this range. The results in Fig. 11 further show
+that the inconsistency between the estimates is largely caused by the
+precipitation estimates from the 2C-Rain-Profile product. The snowfall estimates
+from the 2C-Snow-Profile product show some consistency for estimates around 1
+mm/h.
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure13.pdf}}
+ \caption{
+Scatter plot comparing CPR- and DPR- based precipitation estimates. Panel (a)
+compares the DPR-based precipitation estimates from the GPM 2BCMB product with
+estimates of the CloudSat 2C-Rain-Profile product. Panel (b) compares the GPM
+estimates with snowfall estimates from the 2C-Snow-Profile product.
+ }\label{fig:cpr_cmb_scatter}
+\end{figure}
+
+\section{Global Precipitation Distributions}
+
+Although the fusing of CPR- and DPR- based precipitation estimates does not
+increase the accuracy of individual precipitation estimates, it has shown clear
+improvements in precipitation detection and reductions of climatological biases
+compared to shipborne distrometer measurements indicating that the fused CPR–DPR
+estimates better represent light and frozen precipitation. Below we characterize
+the impact of fusing CPR and DPR-based precipitation estimates on global
+precipitation distributions.
+
+Figure~\ref{fig:zonal_means_all} displays the zonal distribution of ocean precipitation as retrieved by
+the GPROF-NN CPR, DPR, and XPR retrievals. The CPR-based retrieval yields higher
+precipitation rates poleward of the mid-latitude storm tracks but severely
+underestimate precipitation in the tropics and extratropics compared to the
+estimates derived from DPR-based retrieval. The fused estimates track the GPM
+DPR-based estimates within -30 and 30 degree N. Starting at 40 N and -30 degree
+North, the fused estimates follow closer to the CPR-based precipitation
+estimates.
+
+\begin{figure}[h]
+ \centerline{\includegraphics[width=37pc]{figures/figure14.pdf}}
+ \caption{
+Zonal means of oceanic precipitation estimates. The figure compares estimates
+from the CPR-based (GPROF-NN CPR), the DPR-based (GPROF-NN DPR), and from the
+fused precipitation estimates (GPROF-NN XPR) to reference estimates from GPROF V07, ERA5,
+and GPCP.
+ }\label{fig:zonal_means_all}
+\end{figure}
+
+The global retrieved distributions are displayed in
+Fig.~\ref{fig:global_means_all}. Compared to the DPR-based retrievals, the
+CPR-based estimates add more than 2 mm per day over the storm tracks and
+high-latitude oceans. The fused XPR estimates add precipitation over the storm
+tracks and high latitudes albeit less than the CloudSat-based retrieval alone.
+The fused precipitation estimates slightly decrease precipitation over the
+Indian ocean and West Pacific but increase it over the eastern Pacific.
+
+ERA5 exhibits higher precipitation rates than the DPR-based reference retrievals
+almost everywhere. However, pockets of decreasing precipitation are visible in
+the Indian Ocean and the West Pacific roughly matching areas of decreasing
+precipitation in the GPROF-NN XPR results. GPCP precipitation rates are also
+globally higher with scattered regions of decreasing precipitation.
+
+
+\begin{figure}[hp]
+ \centerline{\includegraphics[width=37pc]{figures/figure15.png}}
+ \caption{
+Global distributions of mean daily precipitation accumulations from the DPR-based estimates (GPROF-NN DPR), the CPR-based estimates (GPROF-NN CS), and the merged estimates (GPROF-NN XPR) and the ERA5 and GPCP datasets.
+ }\label{fig:global_means_all}
+\end{figure}
+
+\section{Summary and Conclusions}
+
+This work presents GPROF-NN XPR, a novel precipitation retrieval aimed to
+overcome limitations of current global PMW precipitation retrievals imposed by
+shortcomings of the reference data used to train machine-learning-based
+algorithms. The retrieval combines dedicated estimates of light precipitation
+based on reference data from the CloudSat CPR with general precipitation
+estimates based on reference data from the GPM DPR. A simple fusion scheme is
+proposed to combine the light and regular precipitation estimates into a single
+fused precipitation estimate.
+
+Validation of the fused GPROF-NN XPR precipitation estimates shows improved
+precipitation detection and a reduction of the systematic underestimation that
+commonly affects retrievals, particularly at high latitudes and for frozen
+precipitation. These results indicate that GMI PMW observations can help bridge
+the current sensitivity gap between precipitation measurements from the CloudSat
+and DPR missions. By providing more direct estimates of precipitation across a
+wide range of precipitation and climate regimes, the GPROF-NN XPR retrieval
+therefore has the potential to improve the representation of precipitation in
+global precipitation datasets. In particular, it may reduce the need for
+climatological corrections that suppress monthly and interannual variability in
+such datasets.
+
+These findings also highlight the potential for more effective synergistic
+active–passive precipitation retrievals using GMI observations. The DPR-based
+estimates used here are derived from the GPM 2BCMB product, which already
+combines radar and radiometer information. However, the current algorithm only
+retrieves precipitation where the radar observations indicate hydrometeor
+backscatter. The results presented here demonstrate that GMI observations alone
+can identify precipitation that is not detected by the DPR, suggesting that
+current combined radar–radiometer retrievals do not yet fully exploit the
+synergistic potential of the active and passive microwave observations provided
+by the GPM satellite. Although the fused precipitation estimates improve
+detection and reduce climatological biases, the fusion increases random
+retrieval errors compared to the DPR-based estimates. Validation of the
+CPR-based precipitation estimates from the 2C-Rain-Profile product provide more
+sensitive but generally less accurate quantitative precipitation estimates than
+the DPR-based reference. The comparison against both ground-based radar and
+against DPR show large spread at light precipitation rates with a bi-modal
+tendency to either strongly underestimate or overestimate precipitation by an
+order of magnitude. The bi-modal behavior of the 2C-Rain-Profile was already
+noted in the first publication describing the retrieval but apparently has not
+been further investigated since. This is concerning considering the
+2C-Rain-Profile estimates are used to calibrate principal global precipitation
+products including IMERG and GPCP.
+
+The extensive validation of the GPROF-NN XPR estimates provided here confirms
+that the fused precipitation estimates improve the representation of light and
+frozen precipitation despite the discovered inconsistencies in the CPR-based
+precipitation estimates. The GPROF-NN XPR retrieval will therefore be used as an
+auxiliary retrieval to add light precipitation to the DPR-based reference data
+that will be used to train the retrieval algorithms for the next operational
+version of the GPM PMW retrieval algorithms.
+
+While the GPROF-NN XPR estimates constitute an additional step towards improved
+global estimates of oceanic precipitation from the GPM missions, this work
+highlights remaining challenges of current global precipitation products. Since
+CPR- and DPR-based are currently used in combination to calibrate global
+precipitation products, it should be ensured that these products are consistent
+across the shared sensitivity range of CPR and DPR. Moreover, our results
+indicate that current synergistic active–passive precipitation retrievals
+underutilize passive observations and could likely be improved to overcome
+limitations of current active sensors.
+
+
+
 Citations to standard references in text should consist of the name of the
 author and the year of publication, for example, \citet{Becker+Schmitz2003} or
 \citep{Becker+Schmitz2003} using the appropriate $\backslash$citet\ or
